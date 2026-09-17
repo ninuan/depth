@@ -1,0 +1,14 @@
+defaults:
+  - view_sampler: scannet
+
+name: scannet
+roots: [datasets/scannet_processed_v2]
+image_shape: [240, 320]
+background_color: [0.0, 0.0, 0.0]
+cameras_are_circular: false
+augment: true
+near: 0.1
+far: 10.0
+train_times_per_scene: 1
+test_len: -1
+test_split: test

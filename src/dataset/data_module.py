@@ -104,7 +104,7 @@ class DataModule(LightningDataModule):
         dataset = get_dataset(self.dataset_cfg, "val", self.step_tracker)
         dataset = self.dataset_shim(dataset, "val")
         return DataLoader(
-            ValidationWrapper(dataset, 1),
+            dataset if self.dataset_cfg.name == "scannet" else ValidationWrapper(dataset, 1),
             self.data_loader_cfg.val.batch_size,
             num_workers=self.data_loader_cfg.val.num_workers,
             generator=self.get_generator(self.data_loader_cfg.val),

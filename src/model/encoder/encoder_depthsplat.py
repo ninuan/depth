@@ -158,13 +158,19 @@ class EncoderDepthSplat(Encoder[EncoderDepthSplatCfg]):
         else:
             cameras_dist_index = None
 
+        # Geometry uses normalized half-pixel centers; UniMatch CNN warping
+        # uses integer centers before scaling K to each feature resolution.
+        matching_intrinsics = context["intrinsics"].clone()
+        matching_intrinsics[..., 0, 2] -= 0.5 / w
+        matching_intrinsics[..., 1, 2] -= 0.5 / h
+
         # depth prediction
         results_dict = self.depth_predictor(
             context["image"],
             attn_splits_list=[2],
             min_depth=1. / context["far"],
             max_depth=1. / context["near"],
-            intrinsics=context["intrinsics"],
+            intrinsics=matching_intrinsics,
             extrinsics=context["extrinsics"],
             nn_matrix=cameras_dist_index,
         )
@@ -180,7 +186,7 @@ class EncoderDepthSplat(Encoder[EncoderDepthSplatCfg]):
             # [B, V, H*W, 1, 1]
             depths = rearrange(depth, "b v h w -> b v (h w) () ()")
 
-            if self.cfg.supervise_intermediate_depth and len(depth_preds) > 1:
+            if self.training and self.cfg.supervise_intermediate_depth and len(depth_preds) > 1:
                 # supervise all the intermediate depth predictions
                 num_depths = len(depth_preds)
 
@@ -252,7 +258,7 @@ class EncoderDepthSplat(Encoder[EncoderDepthSplatCfg]):
         raw_gaussians = rearrange(
             gaussians, "b v c h w -> b v (h w) c")
 
-        if self.cfg.supervise_intermediate_depth and len(depth_preds) > 1:
+        if self.training and self.cfg.supervise_intermediate_depth and len(depth_preds) > 1:
 
             # supervise all the intermediate depth predictions
             num_depths = len(depth_preds)
@@ -293,7 +299,7 @@ class EncoderDepthSplat(Encoder[EncoderDepthSplatCfg]):
 
         sh_input_images = context["image"]
 
-        if self.cfg.supervise_intermediate_depth and len(depth_preds) > 1:
+        if self.training and self.cfg.supervise_intermediate_depth and len(depth_preds) > 1:
             context_extrinsics = torch.cat(
                 [context["extrinsics"]] * len(depth_preds), dim=0)
             context_intrinsics = torch.cat(

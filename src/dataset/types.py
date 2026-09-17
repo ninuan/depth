@@ -20,6 +20,9 @@ class BatchedViews(TypedDict, total=False):
     near: Float[Tensor, "batch _"]  # batch view
     far: Float[Tensor, "batch _"]  # batch view
     index: Int64[Tensor, "batch _"]  # batch view
+    depth: Float[Tensor, "batch _ height width"]
+    depth_mask: Tensor  # batch view height width
+    frame_id: Int64[Tensor, "batch _"]  # original ScanNet frame number
 
 
 class BatchedExample(TypedDict, total=False):
@@ -35,6 +38,9 @@ class UnbatchedViews(TypedDict, total=False):
     near: Float[Tensor, " _"]
     far: Float[Tensor, " _"]
     index: Int64[Tensor, " _"]
+    depth: Float[Tensor, " _ height width"]
+    depth_mask: Tensor  # view height width
+    frame_id: Int64[Tensor, "_"]
 
 
 class UnbatchedExample(TypedDict, total=False):

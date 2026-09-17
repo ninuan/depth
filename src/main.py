@@ -2,6 +2,7 @@ import os
 from pathlib import Path
 import warnings
 import copy
+import shutil
 
 import hydra
 import torch
@@ -47,7 +48,8 @@ def cyan(text: str) -> str:
     config_name="main",
 )
 def train(cfg_dict: DictConfig):
-    if cfg_dict["mode"] == "train" and cfg_dict["train"]["eval_model_every_n_val"] > 0:
+    if (cfg_dict["mode"] == "train" and cfg_dict["train"]["eval_model_every_n_val"] > 0
+            and cfg_dict["dataset"]["name"] != "scannet"):
         eval_cfg_dict = copy.deepcopy(cfg_dict)
         dataset_dir = str(cfg_dict["dataset"]["roots"]).lower()
         if "re10k" in dataset_dir:
@@ -70,6 +72,18 @@ def train(cfg_dict: DictConfig):
 
     cfg = load_typed_root_config(cfg_dict)
     set_cfg(cfg_dict)
+
+    if cfg.dataset.name == "scannet":
+        if not cfg.model.encoder.return_depth or cfg.model.encoder.train_depth_only or cfg.train.forward_depth_only:
+            raise ValueError("ScanNet joint RGB/depth training requires return_depth=true and the Gaussian head")
+        if cfg.train.depth_loss_weight < 0:
+            raise ValueError("depth_loss_weight cannot be negative")
+        if not isinstance(cfg.trainer.val_check_interval, int):
+            raise ValueError("ScanNet val_check_interval must be an integer training-batch interval")
+        if cfg.data_loader.test.batch_size != 1 or cfg.data_loader.val.batch_size != 1:
+            raise ValueError("ScanNet validation/test protocol uses batch_size=1")
+        if cfg.mode == "test" and torch.cuda.device_count() != 1:
+            raise ValueError("Use CUDA_VISIBLE_DEVICES to select one GPU for exact test aggregation")
 
     # Set up the output directory.
     if cfg_dict.output_dir is None:
@@ -104,24 +118,33 @@ def train(cfg_dict: DictConfig):
         if wandb.run is not None:
             wandb.run.log_code("src")
     else:
-        logger = LocalLogger()
+        logger = LocalLogger(output_dir / "logs")
 
-    # Set up checkpointing.
-    callbacks.append(
-        ModelCheckpoint(
+    # ScanNet uses the real validation split for checkpoint selection.
+    if cfg.dataset.name == "scannet":
+        callbacks.append(ModelCheckpoint(
+            output_dir / "checkpoints", monitor="val/psnr", mode="max",
+            save_top_k=cfg.checkpointing.save_top_k, save_last=True,
+            save_on_train_epoch_end=False, filename="step{step:06d}-psnr{val/psnr:.3f}",
+            auto_insert_metric_name=False,
+        ))
+    else:
+        callbacks.append(ModelCheckpoint(
             output_dir / "checkpoints",
             every_n_train_steps=cfg.checkpointing.every_n_train_steps,
             save_top_k=cfg.checkpointing.save_top_k,
-            monitor="info/global_step",
-            mode="max",
-        )
-    )
+            monitor="info/global_step", mode="max",
+        ))
     for cb in callbacks:
         cb.CHECKPOINT_EQUALS_CHAR = '_'
 
     # Prepare the checkpoint for loading.
     if cfg.checkpointing.resume:
-        if not os.path.exists(output_dir / 'checkpoints'):
+        if cfg.dataset.name == 'scannet':
+            checkpoint_path = output_dir / 'checkpoints' / 'last.ckpt'
+            if not checkpoint_path.is_file():
+                raise FileNotFoundError(f'No resume checkpoint: {checkpoint_path}')
+        elif not os.path.exists(output_dir / 'checkpoints'):
             checkpoint_path = None
         else:
             checkpoint_path = find_latest_ckpt(output_dir / 'checkpoints')
@@ -134,6 +157,8 @@ def train(cfg_dict: DictConfig):
 
     trainer = Trainer(
         max_epochs=-1,
+        log_every_n_steps=min(50, cfg.train.print_log_every_n_steps),
+        check_val_every_n_epoch=None if cfg.dataset.name == "scannet" else 1,
         accelerator="gpu",
         logger=logger,
         devices=torch.cuda.device_count(),
@@ -148,6 +173,13 @@ def train(cfg_dict: DictConfig):
         plugins=LightningEnvironment() if cfg.use_plugins else None,
     )
     torch.manual_seed(cfg_dict.seed + trainer.global_rank)
+    if trainer.is_global_zero:
+        output_dir.mkdir(parents=True, exist_ok=True)
+        config_name = "resume_config.yaml" if cfg.checkpointing.resume else "run_config.yaml"
+        OmegaConf.save(cfg_dict, output_dir / config_name)
+        if cfg.dataset.name == "scannet":
+            for i, root in enumerate(cfg.dataset.roots):
+                shutil.copyfile(root / "manifest.json", output_dir / f"dataset_manifest_{i}.json")
 
     encoder, encoder_visualizer = get_encoder(cfg.model.encoder)
 
@@ -180,7 +212,7 @@ def train(cfg_dict: DictConfig):
 
     if cfg.mode == "train":
         # only load monodepth
-        if cfg.checkpointing.pretrained_monodepth is not None:
+        if not cfg.checkpointing.resume and cfg.checkpointing.pretrained_monodepth is not None:
             strict_load = False
             pretrained_model = torch.load(cfg.checkpointing.pretrained_monodepth, map_location='cpu')
             if 'state_dict' in pretrained_model:
@@ -194,7 +226,7 @@ def train(cfg_dict: DictConfig):
             )
 
         # load pretrained mvdepth
-        if cfg.checkpointing.pretrained_mvdepth is not None:
+        if not cfg.checkpointing.resume and cfg.checkpointing.pretrained_mvdepth is not None:
             pretrained_model = torch.load(cfg.checkpointing.pretrained_mvdepth, map_location='cpu')['model']
 
             model_wrapper.encoder.depth_predictor.load_state_dict(pretrained_model, strict=False)
@@ -205,7 +237,7 @@ def train(cfg_dict: DictConfig):
             )
         
         # load full model
-        if cfg.checkpointing.pretrained_model is not None:
+        if not cfg.checkpointing.resume and cfg.checkpointing.pretrained_model is not None:
             pretrained_model = torch.load(cfg.checkpointing.pretrained_model, map_location='cpu')
             if 'state_dict' in pretrained_model:
                 pretrained_model = pretrained_model['state_dict']
@@ -218,7 +250,7 @@ def train(cfg_dict: DictConfig):
             )
 
         # load pretrained depth
-        if cfg.checkpointing.pretrained_depth is not None:
+        if not cfg.checkpointing.resume and cfg.checkpointing.pretrained_depth is not None:
             pretrained_model = torch.load(cfg.checkpointing.pretrained_depth, map_location='cpu')['model']
 
             strict_load = True
@@ -232,7 +264,7 @@ def train(cfg_dict: DictConfig):
         trainer.fit(model_wrapper, datamodule=data_module, ckpt_path=checkpoint_path)
     else:
         # load full model
-        if cfg.checkpointing.pretrained_model is not None:
+        if not cfg.checkpointing.resume and cfg.checkpointing.pretrained_model is not None:
             pretrained_model = torch.load(cfg.checkpointing.pretrained_model, map_location='cpu')
             if 'state_dict' in pretrained_model:
                 pretrained_model = pretrained_model['state_dict']
@@ -245,7 +277,7 @@ def train(cfg_dict: DictConfig):
             )
 
         # load pretrained depth model only
-        if cfg.checkpointing.pretrained_depth is not None:
+        if not cfg.checkpointing.resume and cfg.checkpointing.pretrained_depth is not None:
             pretrained_model = torch.load(cfg.checkpointing.pretrained_depth, map_location='cpu')['model']
 
             strict_load = True

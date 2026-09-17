@@ -27,7 +27,7 @@ from ..global_cfg import get_cfg
 from ..loss import Loss
 from ..misc.benchmarker import Benchmarker
 from ..misc.image_io import prep_image, save_image, save_video
-from ..misc.LocalLogger import LOG_PATH, LocalLogger
+from ..misc.LocalLogger import LocalLogger
 from ..misc.step_tracker import StepTracker
 from ..visualization.annotation import add_label
 from ..visualization.camera_trajectory.interpolation import (
@@ -48,6 +48,7 @@ from src.visualization.vis_depth import viz_depth_tensor
 from PIL import Image
 from ..misc.stablize_camera import render_stabilization_path
 from .ply_export import save_gaussian_ply
+from .depth_supervision import supervised_depth_loss, depth_metrics, valid_depth_mask as depth_valid_mask
 
 
 @dataclass
@@ -93,6 +94,9 @@ class TrainCfg:
     forward_depth_only: bool
     train_ignore_large_loss: float
     no_log_projections: bool
+    depth_loss_weight: float = 0.0
+    depth_loss_mode: str = "log_l1"
+    depth_intermediate_weight: float = 0.5
 
 
 @runtime_checkable
@@ -158,6 +162,7 @@ class ModelWrapper(LightningModule):
         _, _, _, h, w = batch["target"]["image"].shape
 
         # Run the model.
+        pred_depths = None
         gaussians = self.encoder(
             batch["context"], self.global_step, False, scene_names=batch["scene"]
         )
@@ -225,6 +230,23 @@ class ModelWrapper(LightningModule):
             )
 
         target_gt = batch["target"]["image"]
+        depth_loss_value = 0.0
+
+        if self.train_cfg.depth_loss_weight > 0:
+            if pred_depths is None or "depth" not in batch["context"]:
+                raise ValueError("Depth supervision requires return_depth=true and RGB-D labels")
+            depth_loss, final_loss = supervised_depth_loss(
+                pred_depths, batch["context"], self.train_cfg.depth_loss_mode,
+                self.train_cfg.depth_intermediate_weight,
+            )
+            valid_fraction = depth_valid_mask(batch["context"]).float().mean()
+            if valid_fraction == 0:
+                raise ValueError("Training batch has no valid depth labels within near/far")
+            depth_loss_value = self.train_cfg.depth_loss_weight * depth_loss
+            self.log("loss/depth_unweighted", depth_loss)
+            self.log("loss/depth_final", final_loss)
+            self.log("loss/depth", depth_loss_value)
+            self.log("train/depth_valid_fraction", valid_fraction)
 
         # Compute metrics.
         psnr_probabilistic = compute_psnr(
@@ -234,7 +256,7 @@ class ModelWrapper(LightningModule):
         self.log("train/psnr", psnr_probabilistic.mean())
 
         # Compute and log loss.
-        total_loss = 0
+        total_loss = depth_loss_value
 
         valid_depth_mask = None
 
@@ -343,6 +365,7 @@ class ModelWrapper(LightningModule):
                 f"context = {batch['context']['index'].tolist()}; "
                 f"bound = [{batch['context']['near'].detach().cpu().numpy().mean()} "
                 f"{batch['context']['far'].detach().cpu().numpy().mean()}]; "
+                f"depth_loss = {depth_loss_value:.6f}; "
                 f"loss = {total_loss:.6f}"
             )
         self.log("info/near", batch["context"]["near"].detach().cpu().numpy().mean())
@@ -396,6 +419,11 @@ class ModelWrapper(LightningModule):
                 if "depth" in batch["context"]:
                     depth_gt = batch["context"]["depth"]
                 gaussians = gaussians["gaussians"]
+
+        if self.test_cfg.compute_scores and pred_depths is not None and "depth" in batch["context"]:
+            metrics = depth_metrics(pred_depths[-b:], batch["context"])
+            for name, value in metrics.items():
+                self.test_step_outputs.setdefault(f"depth_{name}", []).append(value.item())
 
         # save gaussians
         if self.test_cfg.save_gaussian:
@@ -605,8 +633,11 @@ class ModelWrapper(LightningModule):
             self.benchmarker.dump_memory(out_dir / "peak_memory.json")
             self.benchmarker.summarize()
 
-    @rank_zero_only
     def validation_step(self, batch, batch_idx):
+        if self.trainer.datamodule.dataset_cfg.name == "scannet":
+            return self.validation_step_scannet(batch, batch_idx)
+        if self.global_rank != 0:
+            return
         batch: BatchedExample = self.data_shim(batch)
 
         if self.global_rank == 0:
@@ -741,6 +772,32 @@ class ModelWrapper(LightningModule):
                 self.render_video_wobble(batch)
                 if self.train_cfg.extended_visualization:
                     self.render_video_interpolation_exaggerated(batch)
+
+    def validation_step_scannet(self, batch, batch_idx):
+        batch = self.data_shim(batch)
+        result = self.encoder(batch["context"], self.global_step, deterministic=True)
+        b, _, _, h, w = batch["target"]["image"].shape
+        output = self.decoder.forward(
+            result["gaussians"], batch["target"]["extrinsics"],
+            batch["target"]["intrinsics"], batch["target"]["near"],
+            batch["target"]["far"], (h, w),
+        )
+        rgb = output.color.flatten(0, 1)
+        gt = batch["target"]["image"].flatten(0, 1)
+        scores = {"psnr": compute_psnr(gt, rgb).mean(),
+                  "ssim": compute_ssim(gt, rgb).mean(),
+                  "lpips": compute_lpips(gt, rgb).mean()}
+        scores.update({f"depth_{k}": v for k, v in
+                       depth_metrics(result["depths"][-b:], batch["context"]).items()})
+        for name, value in scores.items():
+            self.log(f"val/{name}", value, on_step=False, on_epoch=True,
+                     sync_dist=True, batch_size=b, prog_bar=name == "psnr")
+        if batch_idx == 0 and self.global_rank == 0:
+            comparison = hcat(add_label(vcat(*batch["context"]["image"][0]), "Context"),
+                              add_label(vcat(*gt), "Target"),
+                              add_label(vcat(*rgb), "Prediction"))
+            self.logger.log_image("comparison", [prep_image(add_border(comparison))],
+                                  step=self.global_step)
 
     def on_validation_epoch_end(self) -> None:
         """hack to run the full validation"""
@@ -1065,7 +1122,7 @@ class ModelWrapper(LightningModule):
             for key, value in visualizations.items():
                 tensor = value._prepare_video(value.data)
                 clip = mpy.ImageSequenceClip(list(tensor), fps=value._fps)
-                dir = LOG_PATH / key
+                dir = Path(self.logger.log_dir) / key
                 dir.mkdir(exist_ok=True, parents=True)
                 clip.write_videofile(
                     str(dir / f"{self.global_step:0>6}.mp4"), logger=None

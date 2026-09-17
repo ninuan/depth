@@ -19,11 +19,27 @@ def apply_patch_shim_to_views(views: BatchedViews, patch_size: int) -> BatchedVi
     intrinsics = views["intrinsics"].clone()
     intrinsics[:, :, 0, 0] *= w / w_new  # fx
     intrinsics[:, :, 1, 1] *= h / h_new  # fy
+    intrinsics[:, :, 0, 2] = (intrinsics[:, :, 0, 2] * w - col) / w_new
+    intrinsics[:, :, 1, 2] = (intrinsics[:, :, 1, 2] * h - row) / h_new
 
     return {
         **views,
         "image": image,
         "intrinsics": intrinsics,
+        **(
+            {"depth": views["depth"][..., row : row + h_new, col : col + w_new]}
+            if "depth" in views
+            else {}
+        ),
+        **(
+            {
+                "depth_mask": views["depth_mask"][
+                    ..., row : row + h_new, col : col + w_new
+                ]
+            }
+            if "depth_mask" in views
+            else {}
+        ),
     }
 
 

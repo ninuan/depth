@@ -14,10 +14,20 @@ def reflect_extrinsics(
 
 
 def reflect_views(views: AnyViews) -> AnyViews:
+    intrinsics = views["intrinsics"].clone()
+    # Normalized pixel centers live at (i + 0.5) / width.
+    intrinsics[..., 0, 2] = 1 - intrinsics[..., 0, 2]
     return {
         **views,
         "image": views["image"].flip(-1),
         "extrinsics": reflect_extrinsics(views["extrinsics"]),
+        "intrinsics": intrinsics,
+        **({"depth": views["depth"].flip(-1)} if "depth" in views else {}),
+        **(
+            {"depth_mask": views["depth_mask"].flip(-1)}
+            if "depth_mask" in views
+            else {}
+        ),
     }
 
 

@@ -11,6 +11,7 @@ from jaxtyping import Float
 from torch import Tensor
 
 from ...geometry.projection import get_fov, homogenize_points
+from ...geometry.pinhole import projection_from_intrinsics
 
 
 def get_projection_matrix(
@@ -76,11 +77,11 @@ def render_cuda(
     b, _, _ = extrinsics.shape
     h, w = image_shape
 
-    fov_x, fov_y = get_fov(intrinsics).unbind(dim=-1)
-    tan_fov_x = (0.5 * fov_x).tan()
-    tan_fov_y = (0.5 * fov_y).tan()
-
-    projection_matrix = get_projection_matrix(near, far, fov_x, fov_y)
+    # Rasterizer focal lengths and projected means must use the same camera K.
+    # ScanNet principal points are not necessarily at the center of the image.
+    tan_fov_x = 0.5 / intrinsics[:, 0, 0]
+    tan_fov_y = 0.5 / intrinsics[:, 1, 1]
+    projection_matrix = projection_from_intrinsics(intrinsics, near, far)
     projection_matrix = rearrange(projection_matrix, "b i j -> b j i")
     view_matrix = rearrange(extrinsics.inverse(), "b i j -> b j i")
     full_projection = view_matrix @ projection_matrix

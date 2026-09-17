@@ -1,0 +1,56 @@
+# @package _global_
+defaults:
+  - override /dataset: scannet
+  - override /model/encoder: depthsplat
+  - override /loss: [mse, lpips]
+
+wandb:
+  name: scannet-depth-supervision
+  mode: disabled
+  tags: [scannet, rgbd, depth-supervision]
+
+# Small model, one GPU to start. All ablations must use the same initialization.
+checkpointing:
+  pretrained_model: pretrained/depthsplat-gs-small-re10k-256x256-view2-cfeab6b1.pth
+  save_top_k: 2
+
+data_loader:
+  train:
+    batch_size: 2
+    num_workers: 4
+  val:
+    batch_size: 1
+    num_workers: 2
+  test:
+    batch_size: 1
+    num_workers: 2
+
+trainer:
+  max_steps: 30_000
+  val_check_interval: 1000
+  num_sanity_val_steps: 2
+  num_nodes: 1
+
+optimizer:
+  lr: 2.e-5
+  lr_monodepth: 2.e-6
+
+model:
+  encoder:
+    return_depth: true
+    supervise_intermediate_depth: true
+    train_depth_only: false
+
+train:
+  eval_model_every_n_val: 0
+  depth_loss_weight: 0.1
+  depth_loss_mode: log_l1
+  depth_intermediate_weight: 0.5
+  no_viz_video: true
+  no_log_projections: true
+  print_log_every_n_steps: 20
+
+loss:
+  lpips:
+    apply_after_step: 0
+    weight: 0.05

@@ -53,6 +53,8 @@ def center_crop(
     intrinsics = intrinsics.clone()
     intrinsics[..., 0, 0] *= w_in / w_out  # fx
     intrinsics[..., 1, 1] *= h_in / h_out  # fy
+    intrinsics[..., 0, 2] = (intrinsics[..., 0, 2] * w_in - col) / w_out
+    intrinsics[..., 1, 2] = (intrinsics[..., 1, 2] * h_in - row) / h_out
 
     if depths is not None:
         depths = depths[..., :, row : row + h_out, col : col + w_out]
@@ -95,24 +97,49 @@ def rescale_and_crop(
 
     # reshape and crop depth as well when available
     if depths is not None:
+        depth_shape = depths.shape
         depths = F.interpolate(
-            depths.unsqueeze(1),
+            depths.reshape(-1, 1, h_in, w_in),
             size=(h_scaled, w_scaled),
-            mode="bilinear",
-            align_corners=True,
-        ).squeeze(1)
+            mode="nearest",
+        ).squeeze(1).reshape(*depth_shape[:-2], h_scaled, w_scaled)
 
     return center_crop(images, intrinsics, shape, depths=depths)
 
 
 def apply_crop_shim_to_views(views: AnyViews, shape: tuple[int, int]) -> AnyViews:
-    images, intrinsics = rescale_and_crop(
-        views["image"], views["intrinsics"], shape, depths=None
+    depths = views.get("depth")
+    result = rescale_and_crop(
+        views["image"], views["intrinsics"], shape, depths=depths
     )
+    if depths is None:
+        images, intrinsics = result
+        resized_depths = None
+    else:
+        images, intrinsics, resized_depths = result
+
+    depth_mask = views.get("depth_mask")
+    if depth_mask is not None:
+        *_, h_in, w_in = views["image"].shape
+        h_out, w_out = shape
+        scale_factor = max(h_out / h_in, w_out / w_in)
+        h_scaled = round(h_in * scale_factor)
+        w_scaled = round(w_in * scale_factor)
+        mask_shape = depth_mask.shape
+        depth_mask = F.interpolate(
+            depth_mask.reshape(-1, 1, h_in, w_in).float(),
+            size=(h_scaled, w_scaled),
+            mode="nearest",
+        ).reshape(*mask_shape[:-2], h_scaled, w_scaled)
+        row = (h_scaled - h_out) // 2
+        col = (w_scaled - w_out) // 2
+        depth_mask = depth_mask[..., row : row + h_out, col : col + w_out] > 0.5
     return {
         **views,
         "image": images,
         "intrinsics": intrinsics,
+        **({"depth": resized_depths} if depths is not None else {}),
+        **({"depth_mask": depth_mask} if depth_mask is not None else {}),
     }
 
 

@@ -166,3 +166,14 @@ pretrained
 outputs
 output
 checkpoints
+
+# Local metadata and experiment artifacts
+.DS_Store
+.env.*
+!.env.example
+.uv-cache/
+.torch-cache/
+wandb/
+*.ckpt
+*.pth
+*.torch

@@ -4,6 +4,7 @@ defaults:
   - model/encoder: depthsplat
   - model/decoder: splatting_cuda
   - loss: [mse]
+  - _self_
 
 wandb:
   project: depthsplat
@@ -67,6 +68,9 @@ train:
   forward_depth_only: false
   train_ignore_large_loss: 0.
   no_log_projections: false
+  depth_loss_weight: 0.0
+  depth_loss_mode: log_l1
+  depth_intermediate_weight: 0.5
 
 test:
   output_path: outputs/test

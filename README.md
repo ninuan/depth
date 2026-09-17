@@ -39,6 +39,17 @@ Right: Unsupervised depth pre-training with Gaussian splatting leads to reduced 
 
 - 2025-03-27: We simplified our model architecture while preparing the CVPR camera-ready version. The models have been re-trained, and the [paper](https://arxiv.org/abs/2410.13862) has been updated accordingly. [The new models](MODEL_ZOO.md) are now simpler, faster, and perform as well as or better than the previous version.
 
+## ScanNet ground-truth depth supervision
+
+This repository includes a ScanNet pipeline for supervising predicted depth with ground-truth depth, including RGB-D conversion, data checks, training, and evaluation. See [SCANNET_TRAINING.md](SCANNET_TRAINING.md) for the complete Chinese guide and cloud GPU installation commands using uv.
+
+```bash
+git clone https://github.com/ninuan/depth.git depthsplat
+cd depthsplat
+```
+
+Datasets, pretrained weights, and experiment outputs are not included in Git. Download the weights and prepare the ScanNet data as described in the guide. The uv instructions in that guide use CUDA 12.1; the original upstream installation instructions follow below.
+
 ## Installation
 
 Our code is developed using PyTorch 2.4.0, CUDA 12.4, and Python 3.10. 
@@ -397,6 +408,8 @@ checkpointing.pretrained_model=pretrained/depthsplat-gs-large-re10k-256x256-view
 
 ### Training
 
+- ScanNet RGB-D supervision and cloud GPU commands: [SCANNET_TRAINING.md](SCANNET_TRAINING.md).
+
 - Before training, you need to download the pre-trained [UniMatch](https://github.com/autonomousvision/unimatch) and [Depth Anything V2](https://github.com/DepthAnything/Depth-Anything-V2) weights, and set up your [wandb account](config/main.yaml) (in particular, by setting `wandb.entity=YOUR_ACCOUNT`) for logging.
 
 ```
@@ -436,5 +449,4 @@ We fine-tune our Gaussian Splatting pre-trained depth model using ground-truth d
 ## Acknowledgements
 
 This project is developed with several fantastic repos: [pixelSplat](https://github.com/dcharatan/pixelsplat), [MVSplat](https://github.com/donydchen/mvsplat), [MVSplat360](https://github.com/donydchen/mvsplat360), [UniMatch](https://github.com/autonomousvision/unimatch), [Depth Anything V2](https://github.com/DepthAnything/Depth-Anything-V2) and [DL3DV](https://github.com/DL3DV-10K/Dataset). We thank the original authors for their excellent work.
-
 
