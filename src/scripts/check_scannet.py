@@ -113,13 +113,15 @@ def main():
     p.add_argument('--max_scenes', type=int, default=8, help='Per split; 0 checks all scenes')
     p.add_argument('--gpu', action='store_true')
     p.add_argument('--checkpoint', type=Path)
+    p.add_argument('--dataset', choices=['scannet', 'arkitscenes'], default='scannet')
+    p.add_argument('--splits', nargs='+', choices=['train', 'val', 'test'], default=['train', 'val', 'test'])
     args = p.parse_args()
     if args.max_scenes < 0:
         p.error('--max_scenes must be nonnegative')
     torch.manual_seed(1234)
     args.output_dir.mkdir(parents=True, exist_ok=True)
     with initialize_config_dir(config_dir=str(Path(__file__).resolve().parents[2] / 'config'), version_base=None):
-        cfg_dict = compose(config_name='main', overrides=['+experiment=scannet'])
+        cfg_dict = compose(config_name='main', overrides=[f'+experiment={args.dataset}'])
     cfg_dict.dataset.roots = [str(args.dataset_dir.resolve())]
     cfg_dict.dataset.augment = False
     if args.checkpoint:
@@ -127,12 +129,16 @@ def main():
     cfg = from_dict(DatasetScanNetCfg, OmegaConf.to_container(cfg_dict.dataset),
                     config=Config(type_hooks={Path: Path}))
     manifest = json.loads((args.dataset_dir / 'manifest.json').read_text())
-    locations = [{n.split('_')[0] for n in manifest['retained_splits'][s]} for s in ('train', 'val', 'test')]
+    if args.dataset == 'arkitscenes':
+        locations = [{manifest['physical_locations'][n] for n in manifest['retained_splits'][s]}
+                     for s in ('train', 'val', 'test')]
+    else:
+        locations = [{n.split('_')[0] for n in manifest['retained_splits'][s]} for s in ('train', 'val', 'test')]
     if any(locations[i] & locations[j] for i in range(3) for j in range(i+1, 3)):
         raise ValueError('Physical-location leakage between splits')
     report = {'scene_counts': manifest['scene_counts'], 'splits': {}}
     first_batch = None
-    for stage in ('train', 'val', 'test'):
+    for stage in args.splits:
         dataset = get_dataset(cfg, stage, None)
         count = min(len(dataset), args.max_scenes) if args.max_scenes else len(dataset)
         fractions = []

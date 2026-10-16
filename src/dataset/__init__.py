@@ -11,6 +11,7 @@ DATASETS: dict[str, Dataset] = {
     "re10k": DatasetRE10k,
     "dl3dv": DatasetDL3DV,
     "scannet": DatasetScanNet,
+    "arkitscenes": DatasetScanNet,
 }
 
 

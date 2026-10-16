@@ -1,0 +1,12 @@
+# @package _global_
+defaults:
+  - scannet
+  - override /dataset: arkitscenes
+
+wandb:
+  name: arkitscenes-depth-supervision
+  tags: [arkitscenes, rgbd, depth-supervision]
+
+data_loader:
+  train:
+    batch_size: 1

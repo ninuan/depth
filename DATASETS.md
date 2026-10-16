@@ -1,5 +1,7 @@
 # Datasets
 
+For the ARKitScenes RGB-D extension, frozen subset, download/preprocessing, cross-dataset evaluation and training commands, see [ARKITSCENES.md](ARKITSCENES.md).
+
 For view synthesis experiments with Gaussian splatting, we mainly use [RealEstate10K](https://google.github.io/realestate10k/index.html) and [DL3DV](https://github.com/DL3DV-10K/Dataset) datasets. We provide the data processing scripts to convert the original datasets to pytorch chunk files which can be directly loaded with this codebase. 
 
 Expected folder structure:

@@ -1,0 +1,7 @@
+defaults:
+  - scannet
+
+name: arkitscenes
+roots: [datasets/arkitscenes_processed_v1]
+# Native lowres_wide / lowres_depth resolution, no artificial upsampling.
+image_shape: [192, 256]

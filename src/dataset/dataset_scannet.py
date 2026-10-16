@@ -19,7 +19,7 @@ from .view_sampler import ViewSampler
 
 @dataclass
 class DatasetScanNetCfg(DatasetCfgCommon):
-    name: Literal["scannet"]
+    name: Literal["scannet", "arkitscenes"]
     roots: list[Path]
     near: float = 0.1
     far: float = 10.0
@@ -42,6 +42,8 @@ class DatasetScanNet(Dataset):
             manifest = json.loads((root / "manifest.json").read_text())
             if manifest.get("format_version") != 2:
                 raise ValueError("ScanNet format v2 required; regenerate using convert_scannet.py")
+            if cfg.name == "arkitscenes" and manifest.get("dataset") != "arkitscenes":
+                raise ValueError("Expected an ARKitScenes manifest")
             index = json.loads((root / split / "index.json").read_text())
             for scene, chunk in sorted(index.items()):
                 if cfg.overfit_to_scene is not None and scene != cfg.overfit_to_scene:
@@ -53,7 +55,7 @@ class DatasetScanNet(Dataset):
         if stage == "test" and cfg.test_len > 0:
             self.entries = self.entries[:cfg.test_len]
         if not self.entries:
-            raise ValueError(f"No ScanNet scenes in {split}; check roots, split and conversion report")
+            raise ValueError(f"No {cfg.name} scenes in {split}; check roots, split and conversion report")
 
     def __len__(self):
         return len(self.entries) * (self.cfg.train_times_per_scene if self.stage == "train" else 1)

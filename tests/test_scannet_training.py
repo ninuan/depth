@@ -35,9 +35,9 @@ from src.misc.LocalLogger import LocalLogger
 
 
 class TinyDataModule(LightningDataModule):
-    def __init__(self, sample):
+    def __init__(self, sample, dataset_name='scannet'):
         super().__init__()
-        self.dataset_cfg = types.SimpleNamespace(name='scannet')
+        self.dataset_cfg = types.SimpleNamespace(name=dataset_name)
         self.samples = [sample] * 4
 
     def train_dataloader(self):
@@ -76,7 +76,7 @@ class TinyDecoder(Decoder):
 class TrainingIntegrationTests(unittest.TestCase):
     def setUp(self):
         with initialize_config_dir(config_dir=str(Path('config').resolve()), version_base=None):
-            self.raw = compose(config_name='main', overrides=['+experiment=scannet'])
+            self.raw = compose(config_name='main', overrides=[f'+experiment={getattr(self, "experiment", "scannet")}'])
         set_cfg(self.raw)
         self.cfg = load_typed_root_config(self.raw)
         self.model = ModelWrapper(self.cfg.optimizer, self.cfg.test, self.cfg.train,
@@ -123,7 +123,7 @@ class TrainingIntegrationTests(unittest.TestCase):
         sample = {stage: {k: v[0] for k, v in self.batch[stage].items()}
                   for stage in ('context', 'target')}
         sample['scene'] = 'cpu-fixture'
-        dm = TinyDataModule(sample)
+        dm = TinyDataModule(sample, self.cfg.dataset.name)
         with tempfile.TemporaryDirectory() as directory, patch(
                 'src.model.model_wrapper.compute_lpips',
                 side_effect=lambda gt, pred: (gt-pred).square().mean((1, 2, 3))):
@@ -151,6 +151,10 @@ class TrainingIntegrationTests(unittest.TestCase):
             resumed.fit(self.model, datamodule=dm, ckpt_path=str(last))
             self.assertEqual(resumed.global_step, 3)
             self.assertTrue(list((Path(directory)/'logs').rglob('metrics.csv')))
+
+
+class ARKitTrainingIntegrationTests(TrainingIntegrationTests):
+    experiment = 'arkitscenes'
 
 
 if __name__ == '__main__':

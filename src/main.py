@@ -49,7 +49,7 @@ def cyan(text: str) -> str:
 )
 def train(cfg_dict: DictConfig):
     if (cfg_dict["mode"] == "train" and cfg_dict["train"]["eval_model_every_n_val"] > 0
-            and cfg_dict["dataset"]["name"] != "scannet"):
+            and cfg_dict["dataset"]["name"] not in ("scannet", "arkitscenes")):
         eval_cfg_dict = copy.deepcopy(cfg_dict)
         dataset_dir = str(cfg_dict["dataset"]["roots"]).lower()
         if "re10k" in dataset_dir:
@@ -73,15 +73,15 @@ def train(cfg_dict: DictConfig):
     cfg = load_typed_root_config(cfg_dict)
     set_cfg(cfg_dict)
 
-    if cfg.dataset.name == "scannet":
+    if cfg.dataset.name in ("scannet", "arkitscenes"):
         if not cfg.model.encoder.return_depth or cfg.model.encoder.train_depth_only or cfg.train.forward_depth_only:
-            raise ValueError("ScanNet joint RGB/depth training requires return_depth=true and the Gaussian head")
+            raise ValueError("RGB-D joint RGB/depth training requires return_depth=true and the Gaussian head")
         if cfg.train.depth_loss_weight < 0:
             raise ValueError("depth_loss_weight cannot be negative")
         if not isinstance(cfg.trainer.val_check_interval, int):
-            raise ValueError("ScanNet val_check_interval must be an integer training-batch interval")
+            raise ValueError("RGB-D val_check_interval must be an integer training-batch interval")
         if cfg.data_loader.test.batch_size != 1 or cfg.data_loader.val.batch_size != 1:
-            raise ValueError("ScanNet validation/test protocol uses batch_size=1")
+            raise ValueError("RGB-D validation/test protocol uses batch_size=1")
         if cfg.mode == "test" and torch.cuda.device_count() != 1:
             raise ValueError("Use CUDA_VISIBLE_DEVICES to select one GPU for exact test aggregation")
 
@@ -120,8 +120,8 @@ def train(cfg_dict: DictConfig):
     else:
         logger = LocalLogger(output_dir / "logs")
 
-    # ScanNet uses the real validation split for checkpoint selection.
-    if cfg.dataset.name == "scannet":
+    # RGB-D datasets use the real validation split for checkpoint selection.
+    if cfg.dataset.name in ("scannet", "arkitscenes"):
         callbacks.append(ModelCheckpoint(
             output_dir / "checkpoints", monitor="val/psnr", mode="max",
             save_top_k=cfg.checkpointing.save_top_k, save_last=True,
@@ -140,7 +140,7 @@ def train(cfg_dict: DictConfig):
 
     # Prepare the checkpoint for loading.
     if cfg.checkpointing.resume:
-        if cfg.dataset.name == 'scannet':
+        if cfg.dataset.name in ("scannet", "arkitscenes"):
             checkpoint_path = output_dir / 'checkpoints' / 'last.ckpt'
             if not checkpoint_path.is_file():
                 raise FileNotFoundError(f'No resume checkpoint: {checkpoint_path}')
@@ -158,7 +158,7 @@ def train(cfg_dict: DictConfig):
     trainer = Trainer(
         max_epochs=-1,
         log_every_n_steps=min(50, cfg.train.print_log_every_n_steps),
-        check_val_every_n_epoch=None if cfg.dataset.name == "scannet" else 1,
+        check_val_every_n_epoch=None if cfg.dataset.name in ("scannet", "arkitscenes") else 1,
         accelerator="gpu",
         logger=logger,
         devices=torch.cuda.device_count(),
@@ -177,7 +177,7 @@ def train(cfg_dict: DictConfig):
         output_dir.mkdir(parents=True, exist_ok=True)
         config_name = "resume_config.yaml" if cfg.checkpointing.resume else "run_config.yaml"
         OmegaConf.save(cfg_dict, output_dir / config_name)
-        if cfg.dataset.name == "scannet":
+        if cfg.dataset.name in ("scannet", "arkitscenes"):
             for i, root in enumerate(cfg.dataset.roots):
                 shutil.copyfile(root / "manifest.json", output_dir / f"dataset_manifest_{i}.json")
 

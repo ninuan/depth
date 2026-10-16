@@ -634,7 +634,7 @@ class ModelWrapper(LightningModule):
             self.benchmarker.summarize()
 
     def validation_step(self, batch, batch_idx):
-        if self.trainer.datamodule.dataset_cfg.name == "scannet":
+        if self.trainer.datamodule.dataset_cfg.name in ("scannet", "arkitscenes"):
             return self.validation_step_scannet(batch, batch_idx)
         if self.global_rank != 0:
             return

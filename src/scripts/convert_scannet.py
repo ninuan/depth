@@ -132,7 +132,7 @@ def align_registered_rgb(rgb, color_k, depth_k, depth_shape):
     return aligned, valid
 
 
-def depth_overlap(source, target, k, source_w2c, target_w2c, stride=12):
+def depth_overlap(source, target, k, source_w2c, target_w2c, stride=12, target_k=None):
     """Fraction of valid sampled source pixels also visible at the target surface."""
     h, w = source.shape
     yy, xx = np.mgrid[0:h:stride, 0:w:stride]
@@ -145,7 +145,7 @@ def depth_overlap(source, target, k, source_w2c, target_w2c, stride=12):
     transform = target_w2c @ np.linalg.inv(source_w2c)
     xyz = transform[:3, :3] @ xyz + transform[:3, 3:4]
     positive = xyz[2] > 1e-5
-    uv = k @ xyz
+    uv = (k if target_k is None else target_k) @ xyz
     xy = np.rint(uv[:2] / np.maximum(uv[2:], 1e-5)).astype(np.int64)
     inside = positive & (xy[0] >= 0) & (xy[0] < w) & (xy[1] >= 0) & (xy[1] < h)
     target_z = target[xy[1, inside], xy[0, inside]]
@@ -154,11 +154,13 @@ def depth_overlap(source, target, k, source_w2c, target_w2c, stride=12):
 
 
 def build_triplets(depths, k, poses, max_gap=4, min_baseline=.02, min_overlap=.3):
+    # Registered RGB-D datasets may have frame-dependent intrinsics.
+    ks = [k] * len(poses) if np.asarray(k).ndim == 2 else k
     centers = [np.linalg.inv(p)[:3, 3] for p in poses]
     cache = {}
     def overlap(a, b):
         if (a, b) not in cache:
-            cache[a, b] = depth_overlap(depths[a], depths[b], k, poses[a], poses[b])
+            cache[a, b] = depth_overlap(depths[a], depths[b], ks[a], poses[a], poses[b], target_k=ks[b])
         return cache[a, b]
     scored = []
     for left in range(len(poses)):
