@@ -1,3 +1,5 @@
+本仓库扩展实验：ScanNet / ARKitScenes 的 MVSplat 同协议外部对比，见 [MVSPLAT.md](MVSPLAT.md)。
+
 <p align="center">
   <h1 align="center">DepthSplat: Connecting Gaussian Splatting and Depth</h1>
   <p align="center">

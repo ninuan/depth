@@ -62,7 +62,11 @@ def gpu_smoke(cfg_dict, batch):
     model = ModelWrapper(cfg.optimizer, cfg.test, cfg.train, encoder, None,
                          get_decoder(cfg.model.decoder, cfg.dataset), get_losses(cfg.loss), None).cuda()
     weights = torch.load(cfg.checkpointing.pretrained_model, map_location='cpu', weights_only=False)
-    model.load_state_dict(weights.get('state_dict', weights), strict=True)
+    if cfg.model.encoder.name == 'mvsplat':
+        from src.misc.mvsplat_checkpoint import load_mvsplat_weights
+        load_mvsplat_weights(model.encoder, weights)
+    else:
+        model.load_state_dict(weights.get('state_dict', weights), strict=True)
     captured = {}
     model.log = lambda name, value, **kwargs: captured.update({name: float(value.detach()) if torch.is_tensor(value) else float(value)})
     batch = model.transfer_batch_to_device(batch, torch.device('cuda'), 0)
@@ -86,16 +90,18 @@ def gpu_smoke(cfg_dict, batch):
         raise RuntimeError('Optimizer failed to update depth network')
     optimizer.zero_grad(set_to_none=True)
     del loss, before
-    # Also prove the direct depth loss reaches the real predictor, independently of RGB.
-    result = model.encoder(batch['context'], 0)
-    direct, _ = supervised_depth_loss(result['depths'], batch['context'], cfg.train.depth_loss_mode,
-                                      cfg.train.depth_intermediate_weight)
-    direct.backward()
-    if not any(p.grad is not None and torch.isfinite(p.grad).all() and p.grad.abs().max() > 0 for p in params):
-        raise RuntimeError('Direct GT depth supervision is disconnected')
-    direct_value = float(direct.detach())
-    model.zero_grad(set_to_none=True)
-    del result, direct
+    direct_value = None
+    if cfg.train.depth_loss_weight > 0:
+        # Also prove the direct depth loss reaches the real predictor, independently of RGB.
+        result = model.encoder(batch['context'], 0)
+        direct, _ = supervised_depth_loss(result['depths'], batch['context'], cfg.train.depth_loss_mode,
+                                          cfg.train.depth_intermediate_weight)
+        direct.backward()
+        if not any(p.grad is not None and torch.isfinite(p.grad).all() and p.grad.abs().max() > 0 for p in params):
+            raise RuntimeError('Direct GT depth supervision is disconnected')
+        direct_value = float(direct.detach())
+        model.zero_grad(set_to_none=True)
+        del result, direct
     model.eval()
     with torch.no_grad():
         prediction = model.encoder(batch['context'], 0)
@@ -113,6 +119,7 @@ def main():
     p.add_argument('--max_scenes', type=int, default=8, help='Per split; 0 checks all scenes')
     p.add_argument('--gpu', action='store_true')
     p.add_argument('--checkpoint', type=Path)
+    p.add_argument('--encoder', choices=['depthsplat', 'mvsplat'], default='depthsplat')
     p.add_argument('--dataset', choices=['scannet', 'arkitscenes'], default='scannet')
     p.add_argument('--splits', nargs='+', choices=['train', 'val', 'test'], default=['train', 'val', 'test'])
     args = p.parse_args()
@@ -121,7 +128,8 @@ def main():
     torch.manual_seed(1234)
     args.output_dir.mkdir(parents=True, exist_ok=True)
     with initialize_config_dir(config_dir=str(Path(__file__).resolve().parents[2] / 'config'), version_base=None):
-        cfg_dict = compose(config_name='main', overrides=[f'+experiment={args.dataset}'])
+        experiment = f'mvsplat_{args.dataset}' if args.encoder == 'mvsplat' else args.dataset
+        cfg_dict = compose(config_name='main', overrides=[f'+experiment={experiment}'])
     cfg_dict.dataset.roots = [str(args.dataset_dir.resolve())]
     cfg_dict.dataset.augment = False
     if args.checkpoint:

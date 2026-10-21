@@ -1,0 +1,21 @@
+# @package _global_
+defaults:
+  - scannet
+  - override /model/encoder: mvsplat
+
+model:
+  encoder:
+    supervise_intermediate_depth: false
+checkpointing:
+  pretrained_model: pretrained/mvsplat-re10k.ckpt
+optimizer:
+  lr: 2.e-5
+  lr_monodepth: 0.0
+data_loader:
+  train:
+    batch_size: 1
+train:
+  depth_loss_weight: 0.0
+wandb:
+  name: mvsplat-scannet-external-baseline
+  tags: [mvsplat, scannet, rgb-only]

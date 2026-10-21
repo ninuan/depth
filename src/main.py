@@ -33,6 +33,7 @@ with install_import_hook(
     from src.misc.step_tracker import StepTracker
     from src.misc.wandb_tools import update_checkpoint_path
     from src.misc.resume_ckpt import find_latest_ckpt
+    from src.misc.mvsplat_checkpoint import load_mvsplat_weights
     from src.model.decoder import get_decoder
     from src.model.encoder import get_encoder
     from src.model.model_wrapper import ModelWrapper
@@ -72,6 +73,19 @@ def train(cfg_dict: DictConfig):
 
     cfg = load_typed_root_config(cfg_dict)
     set_cfg(cfg_dict)
+
+    if cfg.model.encoder.name == "mvsplat":
+        if cfg.train.depth_loss_weight != 0:
+            raise ValueError("The external MVSplat comparison uses RGB loss only")
+        if cfg.dataset.name not in ("scannet", "arkitscenes"):
+            raise ValueError("This MVSplat adapter is for the fixed RGB-D protocol")
+        if any((cfg.checkpointing.pretrained_monodepth, cfg.checkpointing.pretrained_mvdepth,
+                cfg.checkpointing.pretrained_depth)):
+            raise ValueError("MVSplat uses full encoder initialization only")
+        if cfg.checkpointing.no_strict_load:
+            raise ValueError("MVSplat requires strict checkpoint loading")
+        if not cfg.checkpointing.resume and not cfg.checkpointing.pretrained_model:
+            raise ValueError("Provide the official MVSplat RE10K checkpoint")
 
     if cfg.dataset.name in ("scannet", "arkitscenes"):
         if not cfg.model.encoder.return_depth or cfg.model.encoder.train_depth_only or cfg.train.forward_depth_only:
@@ -242,7 +256,10 @@ def train(cfg_dict: DictConfig):
             if 'state_dict' in pretrained_model:
                 pretrained_model = pretrained_model['state_dict']
 
-            model_wrapper.load_state_dict(pretrained_model, strict=strict_load)
+            if cfg.model.encoder.name == "mvsplat":
+                load_mvsplat_weights(model_wrapper.encoder, pretrained_model)
+            else:
+                model_wrapper.load_state_dict(pretrained_model, strict=strict_load)
             print(
                 cyan(
                     f"Loaded pretrained weights: {cfg.checkpointing.pretrained_model}"
@@ -269,7 +286,10 @@ def train(cfg_dict: DictConfig):
             if 'state_dict' in pretrained_model:
                 pretrained_model = pretrained_model['state_dict']
 
-            model_wrapper.load_state_dict(pretrained_model, strict=strict_load)
+            if cfg.model.encoder.name == "mvsplat":
+                load_mvsplat_weights(model_wrapper.encoder, pretrained_model)
+            else:
+                model_wrapper.load_state_dict(pretrained_model, strict=strict_load)
             print(
                 cyan(
                     f"Loaded pretrained weights: {cfg.checkpointing.pretrained_model}"

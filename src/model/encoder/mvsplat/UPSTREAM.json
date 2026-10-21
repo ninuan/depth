@@ -1,0 +1,22 @@
+{
+  "repository": "https://github.com/donydchen/mvsplat",
+  "commit": "01f9a28edb5eb68416e7e63b01f8d90c3bdfbf01",
+  "original_sha256": {
+    "backbone/__init__.py": "39f6ce9f3167bb8a2a4e3778630b53f048279049779241e21d9477fc805b19d0",
+    "backbone/backbone_multiview.py": "b2b737edf3e5d375fc562be3d4331e6e7472fc92924829bc5bf8aae05873aeea",
+    "backbone/multiview_transformer.py": "28c1346c3c0ae3afff92ed23f8bdcece5eafa3bba014617c3ef28eac4efd5033",
+    "backbone/unimatch/backbone.py": "eb40bddfa236ce678e9d2257ee1e8860b1b2f3acb19273afd80d230823747703",
+    "backbone/unimatch/trident_conv.py": "08189c1c8310953939ad10902a684f64abf5e7ba6dfaed4edb2fdd8964487180",
+    "backbone/unimatch/utils.py": "1e5511cec7ad8e1cbd209664ac343a49a5116dd7f20cf096e671c724938f0138",
+    "backbone/unimatch/position.py": "ff034a0161a4ab1b33574a88e340dbc8ba10062fceee4da59e8029cef349fc7a",
+    "backbone/unimatch/geometry.py": "efaa55c4650771ab1f7380d84684504206ac830179e17a72f2fce67eeada1c8e",
+    "costvolume/conversions.py": "f0cc374923fdb83cfdcabea2d92156dfb81e409729db86131714b01e311e5120",
+    "costvolume/depth_predictor_multiview.py": "c6fb1a8bb82877fbda73a9ce1d3a8e318f8b28187c656ecd3c81a2c6ba626334",
+    "costvolume/ldm_unet/unet.py": "6a1b862114b1c6993216493dd6fe4cbdc79bcb21e957e9d9db5348ec99bb5405",
+    "costvolume/ldm_unet/util.py": "f1961c45a6a2ddd132c8756693af486854610a7deced73d0e5138be47b194c8a",
+    "costvolume/ldm_unet/attention.py": "80bfca21fb8d28b77a0215e3d81223b3533fb0288c90f5d67bad90f5548952e7",
+    "common/gaussian_adapter.py": "2fb9622bdebf90e834267853e45aa06952df1e79fc8a3eccfc51bfc80e044cbd",
+    "common/gaussians.py": "1e3d0f67eab91231d681f520d46478f51942c5c0c2c71fbc0e747820dc200847",
+    "src/geometry/projection.py": "09b66ad4120f1d14deb7a365ab780425fc7f246af69b2aaabb981fe9bf9da08e"
+  }
+}

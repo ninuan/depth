@@ -1,0 +1,8 @@
+# @package _global_
+defaults:
+  - mvsplat_scannet
+  - override /dataset: arkitscenes
+
+wandb:
+  name: mvsplat-arkitscenes-external-baseline
+  tags: [mvsplat, arkitscenes, rgb-only]
