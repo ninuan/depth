@@ -105,6 +105,11 @@ class EncoderMVSplat(Encoder[EncoderMVSplatCfg]):
         origin = context["extrinsics"][:, :, None, None, None, :3, 3]
         forward = context["extrinsics"][:, :, None, None, None, :3, 2]
         camera_z = ((g.means - origin) * forward).sum(-1)
+        if visualization_dump is not None:
+            # The shared exporter expects B,V,H,W,surface,sample and must save
+            # the same camera-Z values as depth evaluation, not ray distance.
+            visualization_dump["depth"] = rearrange(
+                camera_z, "b v (h w) s p -> b v h w s p", h=h, w=w)
         return {"gaussians": gaussians,
                 "depths": rearrange(camera_z, "b v (h w) 1 1 -> b v h w", h=h, w=w)}
 

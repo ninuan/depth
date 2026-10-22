@@ -550,6 +550,16 @@ class ModelWrapper(LightningModule):
                 os.makedirs(save_dir, exist_ok=True)
                 Image.fromarray(concat).save(save_path)
 
+            # Export aligned sensor labels and the same validity mask as metrics
+            # for offline qualitative depth/error figures. No inference changes.
+            if self.test_cfg.save_depth_npy and "depth" in batch["context"]:
+                labels = batch["context"]["depth"][0].detach().cpu().numpy()
+                masks = depth_valid_mask(batch["context"])[0].detach().cpu().numpy()
+                for idx, label, mask in zip(index, labels, masks):
+                    folder = path / "images" / scene / "depth"
+                    np.save(folder / f"{idx:0>6}_gt.npy", label)
+                    np.save(folder / f"{idx:0>6}_mask.npy", mask)
+
             if self.train_cfg.forward_depth_only:
                 return
 

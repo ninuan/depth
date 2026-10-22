@@ -2,6 +2,8 @@
 
 本轮只接入 **MVSplat**。先完成种子 `111123` 的 ScanNet、ARKitScenes 两组独立训练及测试，确认协议后再补 `222123`、`333123`。保留所有种子结果，不根据测试集表现决定是否报告。
 
+三种子结果汇总、ScanNet checkpoint 核对和三方法可视化命令见 [MVSPLAT_RESULTS.md](MVSPLAT_RESULTS.md)。
+
 ## 对比设置
 
 | 项目 | MVSplat | 现有 DepthSplat Baseline / Depth |

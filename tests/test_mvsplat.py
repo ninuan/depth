@@ -92,10 +92,13 @@ class MVSplatTests(unittest.TestCase):
         labels = copy.deepcopy(c)
         labels['depth'] = torch.rand(2, 2, 64, 64) * 100
         labels['depth_mask'] = torch.zeros(2, 2, 64, 64, dtype=torch.bool)
+        dump = {}
         with torch.no_grad():
-            repeated = self.model(labels)
+            repeated = self.model(labels, visualization_dump=dump)
         torch.testing.assert_close(result['depths'], repeated['depths'], rtol=0, atol=0)
         torch.testing.assert_close(result['gaussians'].means, repeated['gaussians'].means, rtol=0, atol=0)
+        self.assertEqual(dump['depth'].shape, (2, 2, 64, 64, 1, 1))
+        torch.testing.assert_close(dump['depth'][..., 0, 0], result['depths'], rtol=0, atol=0)
 
     def test_preserves_official_unit_rays(self):
         from src.model.encoder.mvsplat.common.projection import get_world_rays
