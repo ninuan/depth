@@ -25,6 +25,6 @@ common=(dataset.test_split=val dataset.test_len=8 seed=111123
         test.save_image=true test.save_gt_image=true test.save_input_images=true
         test.save_depth=true test.save_depth_npy=true)
 bash scripts/arkitscenes_eval.sh "$dataset" "$baseline" "$output/baseline" \
-  train.depth_loss_weight=0 "${common[@]}"
+  train.depth_loss_weight=0.0 "${common[@]}"
 bash scripts/arkitscenes_eval.sh "$dataset" "$depth" "$output/depth" "${common[@]}"
 bash scripts/mvsplat_eval.sh arkitscenes "$dataset" "$mvsplat" "$output/mvsplat" "${common[@]}"
