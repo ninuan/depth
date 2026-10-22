@@ -49,6 +49,8 @@ python -m src.scripts.audit_rgbd_results --dataset scannet
 
 脚本读取已有测试配置、结果以及当前路径下的 checkpoint 元数据，不运行 GPU 推理。报告保存为 `outputs/rgbd_checkpoint_audit.json`。训练种子来自对应训练目录的配置；缺失时明确显示 unknown。若权重已经替换、旧配置缺失或文件删除，这个检查不证明旧结果来源，需要补测固定权重。
 
+2026-10-22 收到的审计报告确认三个 MVSplat ScanNet 测试 checkpoint 均为 30000 步，但旧 DepthSplat 记录为 `checkpoint=null`。发现旧审计脚本只检查 `pretrained_model`，已修正为与 RGB-D 测试入口一致的 `resume > load > pretrained_model` 优先级，并保存 `checkpoint_config` 供排查。需重跑审计后再判断旧结果的步数，当前不据此要求重训。
+
 ## 结论范围
 
 当前数据支持：在本项目的固定子集和下游微调设置中，Depth 版本的上述两组平均指标均优于 MVSplat 和 Baseline。深度监督本身的增益主要由同结构的 Baseline / Depth 对照支持；MVSplat 是外部竞争力参照，模型结构、预训练经历和额外训练标签并不相同。
@@ -90,3 +92,28 @@ PY
 ```
 
 这些是验证集诊断图；论文中标注真实划分，不能标成完整测试集图。后续正式测试可视化也应提前固定场景清单并保留失败样例。
+
+## 固定验证样例的实测检查
+
+已检查用户返回的全部 8 个场景、16 个输入视角。三方法的配置、数据 manifest、输入 RGB、目标 RGB GT、深度 GT 和有效 mask 对齐。原始 `.npy` 重算的三项深度指标与日志一致。
+
+| 指标 | MVSplat | DepthSplat RGB | DepthSplat + depth | Depth 相对 RGB 改善场景数 |
+|---|---:|---:|---:|---:|
+| PSNR | 23.093630 | 24.103386 | 24.141729 | 3/8 |
+| SSIM | 0.820270 | 0.840990 | 0.845011 | 5/8 |
+| LPIPS | 0.185904 | 0.153459 | 0.143886 | 6/8 |
+| Depth AbsRel | 0.210724 | 0.116091 | 0.055639 | 8/8 |
+| Depth RMSE (m) | 0.843171 | 0.347110 | 0.132918 | 8/8 |
+| Depth a1 | 0.856443 | 0.879966 | 0.976563 | 8/8 |
+
+以上仅为种子 111123 的固定验证子集。场景 40958733 的 RGB 和深度同时改善；42446608 的深度改善但 PSNR 和 LPIPS 退化，保留作为局限案例。这些输入视角深度图不直接验证目标视角深度或三维重建完整性。
+
+在包含原始导出文件的机器上可复现全部对比图（CPU，无需推理）：
+
+```bash
+python -m src.scripts.plot_rgbd_comparison \
+  outputs/arkit_three_method_visuals_seed111123 \
+  outputs/arkit_qualitative_review_seed111123
+```
+
+输出全部场景，不筛选获胜样例；深度色标固定为 0.1–10 米，深度误差固定为 0–1 米，RGB 平均绝对误差固定为 0–0.25，超界饱和仅用于显示。数值统计无色标截断或尺度对齐。深度无效区域显示灰色。RGB 误差从 8-bit PNG 计算，图中文字 PSNR 使用评估日志。
