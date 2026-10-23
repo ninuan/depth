@@ -116,6 +116,35 @@ def add_bar(fig, cmap, limits, rect, label):
     bar.ax.tick_params(labelsize=8)
 
 
+def paper_panel(root, output, records, data, dataset_label, split, seed):
+    """Use the first two fixed scenes, regardless of which method wins."""
+    selected = records[:2]
+    fig, axes = plt.subplots(3 * len(selected), 4, figsize=(8.2, 8.6), squeeze=False)
+    for i, record in enumerate(selected):
+        scene, item = record['scene'], data[record['scene']]
+        row = i * 3
+        show(axes[row, 0], item['gt_rgb'], f'{scene} | target RGB GT')
+        show(axes[row+1, 0], item['gt'][0], 'Input-view depth GT', 'viridis', (.1, 10), item['mask'][0])
+        input_image = rgb(root / 'baseline/images' / scene / f"color/input_{item['views'][0]}.png")
+        show(axes[row+2, 0], input_image, 'Input RGB | error reference')
+        for col, (m, label) in enumerate(zip(METHODS, LABELS), 1):
+            show(axes[row, col], item[m]['rgb'], label)
+            show(axes[row+1, col], item[m]['depth'][0], 'Predicted depth', 'viridis', (.1, 10), item['mask'][0])
+            show(axes[row+2, col], np.abs(item[m]['depth'][0]-item['gt'][0]),
+                 'Absolute depth error', 'magma', (0, 1), item['mask'][0])
+    for ax in axes.flat:
+        ax.title.set_fontsize(7)
+    fig.suptitle(f'{dataset_label} {split} | seed {seed} | first two fixed scenes', fontsize=11)
+    fig.subplots_adjust(top=.94, bottom=.10, left=.012, right=.988, hspace=.28, wspace=.03)
+    add_bar(fig, 'viridis', (.1, 10), [.12, .055, .30, .012], 'Camera-Z depth (m)')
+    add_bar(fig, 'magma', (0, 1), [.58, .055, .30, .012], 'Depth error (m); >1 saturated')
+    fig.text(.5, .012, 'Gray: invalid sensor depth. Target RGB and input depth use different views. No scale alignment.',
+             ha='center', fontsize=7)
+    fig.savefig(output / 'paper_panel_first2.png', dpi=300)
+    fig.savefig(output / 'paper_panel_first2.pdf')
+    plt.close(fig)
+
+
 def plot(root, output):
     configs, records, data = load_exports(root)
     seed = configs['baseline'].seed
@@ -130,6 +159,7 @@ def plot(root, output):
             raise ValueError('Exported scenes/protocol do not match predeclared selection plan')
     output.mkdir(parents=True, exist_ok=True)
     n = len(records)
+    paper_panel(root, output, records, data, dataset_label, configs['baseline'].dataset.test_split, seed)
     for kind in ('rgb', 'depth_context0', 'depth_context1'):
         fig, axes = plt.subplots(n, 4, figsize=(11, 2.15*n), squeeze=False)
         for row, record in enumerate(records):
