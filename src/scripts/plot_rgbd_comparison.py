@@ -119,6 +119,15 @@ def add_bar(fig, cmap, limits, rect, label):
 def plot(root, output):
     configs, records, data = load_exports(root)
     seed = configs['baseline'].seed
+    dataset_name = configs['baseline'].dataset.name
+    dataset_label = {'scannet': 'ScanNet', 'arkitscenes': 'ARKitScenes'}.get(dataset_name, dataset_name)
+    selection_path = root / 'selection_plan.json'
+    selection = json.loads(selection_path.read_text()) if selection_path.is_file() else None
+    if selection is not None:
+        if (selection['scenes'] != [r['scene'] for r in records] or
+                selection['dataset'] != dataset_name or selection['seed'] != seed or
+                selection['split'] != configs['baseline'].dataset.test_split):
+            raise ValueError('Exported scenes/protocol do not match predeclared selection plan')
     output.mkdir(parents=True, exist_ok=True)
     n = len(records)
     for kind in ('rgb', 'depth_context0', 'depth_context1'):
@@ -135,7 +144,7 @@ def plot(root, output):
                      'viridis', (0.1, 10), item['mask'][v])
                 for col, (m, label) in enumerate(zip(METHODS, LABELS), 1):
                     show(axes[row, col], item[m]['depth'][v], label, 'viridis', (0.1, 10), item['mask'][v])
-        fig.suptitle(f"ARKitScenes {configs['baseline'].dataset.test_split} | seed {seed} | {n} fixed scenes", fontsize=13)
+        fig.suptitle(f"{dataset_label} {configs['baseline'].dataset.test_split} | seed {seed} | {n} fixed scenes", fontsize=13)
         fig.subplots_adjust(top=.95, bottom=.05, left=.01, right=.99, hspace=.25, wspace=.02)
         if kind != 'rgb':
             add_bar(fig, 'viridis', (.1, 10), [.32, .022, .36, .008], 'Camera-Z depth (m); gray = invalid GT')
@@ -160,7 +169,7 @@ def plot(root, output):
                 show(axes[row, col], item[m]['depth'][v], label, 'viridis', (.1, 10), item['mask'][v])
                 show(axes[row+1, col], np.abs(item[m]['depth'][v]-item['gt'][v]),
                      'Absolute depth error', 'magma', (0, 1), item['mask'][v])
-        fig.suptitle(f"ARKitScenes {configs['baseline'].dataset.test_split} | {scene} | seed {seed}\n"
+        fig.suptitle(f"{dataset_label} {configs['baseline'].dataset.test_split} | {scene} | seed {seed}\n"
                      'Target-view RGB and input-view metric Z depth; no depth scale alignment', fontsize=13)
         fig.subplots_adjust(top=.925, bottom=.08, left=.01, right=.99, hspace=.25, wspace=.03)
         add_bar(fig, 'viridis', (.1, 10), [.05, .04, .25, .009], 'Depth (m); gray = invalid GT')
@@ -168,9 +177,10 @@ def plot(root, output):
         add_bar(fig, 'magma', (0, .25), [.71, .04, .25, .009], 'RGB error [0,1]; >0.25 saturated')
         fig.savefig(output / f'scene_{scene}.png', dpi=170)
         plt.close(fig)
-    summary = dict(split=configs['baseline'].dataset.test_split, seed=configs['baseline'].seed,
+    summary = dict(dataset=dataset_name, split=configs['baseline'].dataset.test_split, seed=configs['baseline'].seed,
                    scene_count=n, input_view_count=2*n, alignment_checks='passed',
                    raw_depth_metrics_match=True,
+                   selection_plan=selection,
                    checkpoints={m: str(configs[m].checkpointing.pretrained_model) for m in METHODS},
                    means={m: {k: float(np.mean([r['methods'][m][k] for r in records])) for k in METRICS}
                           for m in METHODS},
