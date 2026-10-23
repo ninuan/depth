@@ -135,10 +135,10 @@ def paper_panel(root, output, records, data, dataset_label, split, seed):
     for ax in axes.flat:
         ax.title.set_fontsize(7)
     fig.suptitle(f'{dataset_label} {split} | seed {seed} | first two fixed scenes', fontsize=11)
-    fig.subplots_adjust(top=.94, bottom=.10, left=.012, right=.988, hspace=.28, wspace=.03)
-    add_bar(fig, 'viridis', (.1, 10), [.12, .055, .30, .012], 'Camera-Z depth (m)')
-    add_bar(fig, 'magma', (0, 1), [.58, .055, .30, .012], 'Depth error (m); >1 saturated')
-    fig.text(.5, .012, 'Gray: invalid sensor depth. Target RGB and input depth use different views. No scale alignment.',
+    fig.subplots_adjust(top=.94, bottom=.14, left=.012, right=.988, hspace=.28, wspace=.03)
+    add_bar(fig, 'viridis', (.1, 10), [.12, .08, .30, .012], 'Camera-Z depth (m)')
+    add_bar(fig, 'magma', (0, 1), [.58, .08, .30, .012], 'Depth error (m); >1 saturated')
+    fig.text(.5, .015, 'Gray: invalid sensor depth. Target RGB and input depth use different views. No scale alignment.',
              ha='center', fontsize=7)
     fig.savefig(output / 'paper_panel_first2.png', dpi=300)
     fig.savefig(output / 'paper_panel_first2.pdf')
