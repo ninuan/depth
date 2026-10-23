@@ -66,7 +66,7 @@ Depth − Baseline 的配对差值：
 
 早期审计曾因仅读取 `pretrained_model` 而漏查旧 `load` 字段，修复后已定位旧结果的 checkpoint，并完成上述固定步数补测。审计读取当前磁盘 checkpoint 元数据；若文件曾被替换，仅当前元数据不追溯证明历史权重内容。
 
-2026-10-23 用户已确定所有主实验和消融固定 30000 步，后续不切换选择规则。主方法冻结为 λ=0.1、Multi-stage。下一步执行 [固定步数消融协议](SCANNET_ABLATION_PROTOCOL.md)：使用已有 8 个 last.ckpt，在固定 48 扫描验证集比较 Final-only / Multi-stage（三种子）及 λ=0.05 / 0.1 / 0.2（种子 111123）。无需为此重新训练；按预定设置报告全部结果，不再根据测试分数调整权重。
+2026-10-23 用户已确定所有主实验和消融固定 30000 步，后续不切换选择规则。主方法冻结为 λ=0.1、Multi-stage。已完成 [固定步数消融协议](SCANNET_ABLATION_PROTOCOL.md) 的全部 8 组验证评估，详见 [消融结果](SCANNET_ABLATION_RESULTS.md)。Multi-stage 的 LPIPS 和 a1 在三个种子上均略优于 Final-only，其他指标未呈现一致优势。单种子 λ=0.2 的深度更准，但 RGB 指标相对 0.1 下降。主方法不变，不继续扫描权重或更换 checkpoint 规则。
 
 ## 结论范围
 
