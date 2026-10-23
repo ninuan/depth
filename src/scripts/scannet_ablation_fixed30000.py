@@ -36,7 +36,7 @@ def sha256(path):
 
 
 def protocol(cfg):
-    """Require the ablations to differ only in their intended depth loss settings."""
+    """Shared training settings; loader RNG is checked within each seed block."""
     fields = ('model', 'optimizer', 'loss', 'data_loader.train',
               'dataset.image_shape', 'dataset.view_sampler', 'dataset.near',
               'dataset.far', 'trainer.max_steps', 'train.depth_loss_mode',
@@ -44,7 +44,20 @@ def protocol(cfg):
               'train.forward_depth_only', 'train.train_ignore_large_loss')
     value = {key: OmegaConf.to_container(OmegaConf.create({'v': OmegaConf.select(cfg, key)}),
                                        resolve=True)['v'] for key in fields}
+    value['data_loader.train'].pop('seed', None)
     return value
+
+
+def config_differences(reference, current, prefix=''):
+    """Show actual leaf values instead of just the enclosing config section."""
+    if isinstance(reference, dict) and isinstance(current, dict):
+        result = {}
+        for key in sorted(reference.keys() | current.keys()):
+            path = f'{prefix}.{key}' if prefix else key
+            result.update(config_differences(reference.get(key, '<missing>'),
+                                             current.get(key, '<missing>'), path))
+        return result
+    return {} if reference == current else {prefix: {'reference': reference, 'current': current}}
 
 
 def evaluation_config(cfg, checkpoint, dataset, output):
@@ -128,7 +141,7 @@ def main():
         code.update(path.read_bytes())
     common = {'source_sha256': code.hexdigest(), 'manifest_sha256': sha256(dataset / 'manifest.json'),
               'val_index_sha256': sha256(dataset / 'val/index.json')}
-    prepared, reference = [], None
+    prepared, reference, loader_seeds = [], None, {}
     for name, directory, seed, weight, intermediate in jobs():
         train_dir = repo / directory
         cfg = OmegaConf.load(train_dir / 'run_config.yaml')
@@ -139,8 +152,14 @@ def main():
         if reference is None:
             reference = signature
         elif signature != reference:
-            changed = [k for k in signature if signature[k] != reference[k]]
-            raise ValueError(f'Other training settings differ in {directory}: {changed}; inspect before comparing')
+            changed = config_differences(reference, signature)
+            raise ValueError(f'Other training settings differ in {directory}: '
+                             f'{json.dumps(changed)}; inspect before comparing')
+        loader = OmegaConf.to_container(cfg.data_loader.train, resolve=True)
+        if seed in loader_seeds and loader['seed'] != loader_seeds[seed]:
+            raise ValueError(f'Within-seed loader RNG mismatch in {directory}: training seed={seed}, '
+                             f'data_loader.train.seed reference={loader_seeds[seed]}, current={loader["seed"]}')
+        loader_seeds[seed] = loader['seed']
         checkpoint = train_dir / 'checkpoints/last.ckpt'
         state = torch.load(checkpoint, map_location='cpu', weights_only=False)
         step = state.get('global_step')
@@ -153,7 +172,8 @@ def main():
         fingerprint = dict(common, checkpoint_sha256=sha256(checkpoint),
                            eval_config_sha256=hashlib.sha256(config_text.encode()).hexdigest())
         record = dict(name=name, checkpoint=str(checkpoint), global_step=step, training_seed=seed,
-                      depth_weight=weight, depth_intermediate_weight=intermediate, fingerprint=fingerprint)
+                      training_data_loader=loader, depth_weight=weight,
+                      depth_intermediate_weight=intermediate, fingerprint=fingerprint)
         receipt = run / 'completed.json'
         complete = False
         if receipt.is_file():
@@ -163,7 +183,8 @@ def main():
             record['scores'] = read_scores(run)
             complete = True
         prepared.append((run, config_text, record, complete))
-        print(f'Checked: {name}, step={step}, lambda={weight}, alpha={intermediate}', flush=True)
+        print(f'Checked: {name}, step={step}, lambda={weight}, alpha={intermediate}, '
+              f'train_loader_seed={loader["seed"]}', flush=True)
     if args.check_only:
         print('All eight checkpoints/configs passed; no GPU inference was run.')
         return

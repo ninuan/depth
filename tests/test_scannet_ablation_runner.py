@@ -59,6 +59,8 @@ def prepare_repo(tmp_path, monkeypatch, cfg):
         (path / 'checkpoints').mkdir(parents=True)
         current = OmegaConf.create(OmegaConf.to_container(cfg, resolve=True))
         current.seed = seed
+        # Actual cloud runs use a different loader RNG per training-seed block.
+        current.data_loader.train.seed = 1234 if seed == 111123 else seed
         current.train.depth_loss_weight = weight
         current.train.depth_intermediate_weight = alpha
         OmegaConf.save(current, path / 'run_config.yaml')
@@ -93,11 +95,34 @@ def test_all_checked_before_inference_and_completed_runs_reused(tmp_path, monkey
     assert len(summary['runs']) == 8
     assert len(summary['stage_three_seed_statistics']) == 2
     assert len(summary['weight_sensitivity_seed111123']) == 3
+    loaders = {r['training_seed']: r['training_data_loader']['seed'] for r in summary['runs']}
+    assert loaders == {111123: 1234, 222123: 222123, 333123: 333123}
     # Changed checkpoint provenance must not silently reuse cached scores.
     torch.save({'global_step': 30000, 'changed': True}, checkpoint)
     with pytest.raises(ValueError, match='different provenance'):
         runner.main()
     assert len(calls) == 8
+
+
+@pytest.mark.parametrize('directory,field,value,message', [
+    ('outputs/scannet_depth_finalonly_seed222123', 'seed', 1234, 'Within-seed loader RNG mismatch'),
+    ('outputs/scannet_depth_seed222123', 'batch_size', 2, 'data_loader.train.batch_size'),
+    ('outputs/scannet_depth_seed222123', 'num_workers', 0, 'data_loader.train.num_workers'),
+])
+def test_real_mismatches_still_block_inference(tmp_path, monkeypatch, training_cfg,
+                                              directory, field, value, message):
+    prepare_repo(tmp_path, monkeypatch, training_cfg)
+    path = tmp_path / directory / 'run_config.yaml'
+    cfg = OmegaConf.load(path)
+    cfg.data_loader.train[field] = value
+    OmegaConf.save(cfg, path)
+
+    def unexpected_inference(*args, **kwargs):
+        pytest.fail('Preflight must reject mismatched controls before GPU inference')
+
+    monkeypatch.setattr(runner.subprocess, 'run', unexpected_inference)
+    with pytest.raises(ValueError, match=message):
+        runner.main()
 
 
 def test_summary_uses_sample_sd_and_paired_direction():
