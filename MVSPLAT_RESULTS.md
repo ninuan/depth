@@ -28,9 +28,23 @@
 | Depth RMSE (m) | 0.849324 ± 0.010797 | 0.332675 ± 0.018808 | 0.259416 ± 0.003537 |
 | Depth a1 | 0.604877 ± 0.011324 | 0.666900 ± 0.007544 | 0.696498 ± 0.007728 |
 
-## ScanNet 独立训练与测试：待核对后合表
+## ScanNet 独立训练与测试：待补测固定 30000 步后合表
 
-用户尚未确认早期 Baseline / Depth 汇总采用 last 还是验证集最佳权重，因此先保留 MVSplat 的固定 30000 步结果，不将旧结果直接混入同协议主表。
+2026-10-23 的 `rgbd_checkpoint_audit_v2.json` 已确认旧 Baseline / Depth 测试读取的是带验证 PSNR 的中途 checkpoint，而非固定 30000 步的 last。所有九组测试均为完整 159 个扫描，checkpoint 读取无报错。旧结果保留为另一种 checkpoint 选择协议下的结果；固定 30000 步主表需补测六组 Baseline / Depth，无需重训或重测 MVSplat。
+
+| 训练种子 | 旧 Baseline 测试 checkpoint 步数 | 旧 Depth 测试 checkpoint 步数 | MVSplat 测试 checkpoint 步数 |
+|---|---:|---:|---:|
+| 111123 | 7000 | 10000 | 30000 |
+| 222123 | 23000 | 22000 | 30000 |
+| 333123 | 10000 | 23000 | 30000 |
+
+旧 ScanNet PSNR 均值 19.086410 / 19.183364 对应上表中途权重，不能标为固定 30000 步。补测使用原训练目录中的 last.ckpt，逐个先检查 global_step=30000，结果写入 `outputs/scannet_fixed30000`。验证集消融同样有中途 checkpoint，报告时须注明其选择协议；不能把已有的 48 扫描验证结果当作 159 扫描测试结果。
+
+```bash
+bash scripts/scannet_eval_fixed30000.sh
+```
+
+脚本在推理前检查全部六个 checkpoint 的步数、训练种子、深度损失权重以及测试扫描数，然后前台串行评估。所有评估统一使用评估随机种子 111123 和测试加载器种子 2345；训练种子由加载的 checkpoint 决定。结果保存在新目录，不覆盖早期测试结果；重复运行会重新执行六次评估。结束后生成 `outputs/scannet_fixed30000/checkpoint_audit.json`，包含六组得分和实际步数。
 
 | 指标 | MVSplat |
 |---|---|
@@ -49,7 +63,7 @@ python -m src.scripts.audit_rgbd_results --dataset scannet
 
 脚本读取已有测试配置、结果以及当前路径下的 checkpoint 元数据，不运行 GPU 推理。报告保存为 `outputs/rgbd_checkpoint_audit.json`。训练种子来自对应训练目录的配置；缺失时明确显示 unknown。若权重已经替换、旧配置缺失或文件删除，这个检查不证明旧结果来源，需要补测固定权重。
 
-2026-10-22 收到的审计报告确认三个 MVSplat ScanNet 测试 checkpoint 均为 30000 步，但旧 DepthSplat 记录为 `checkpoint=null`。发现旧审计脚本只检查 `pretrained_model`，已修正为与 RGB-D 测试入口一致的 `resume > load > pretrained_model` 优先级，并保存 `checkpoint_config` 供排查。需重跑审计后再判断旧结果的步数，当前不据此要求重训。
+2026-10-22 的首版审计曾因只检查 `pretrained_model` 而把旧 DepthSplat 记录显示为 `checkpoint=null`。修正为与 RGB-D 测试入口一致的 `resume > load > pretrained_model` 优先级后，2026-10-23 的报告已成功从 `load` 字段读到上述步数，问题已定位。
 
 ## 结论范围
 
